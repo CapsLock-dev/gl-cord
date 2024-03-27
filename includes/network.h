@@ -18,7 +18,6 @@ private:
 	void do_read_body(msg_header header);
 	bool is_connected();
 	bool reconnect();
-	bool disconnect();
 	void do_reg();
 	asio::io_context m_ctx;
 	asio::ip::tcp::socket m_socket;
@@ -26,5 +25,6 @@ private:
 	std::thread m_ctx_thrd;
 	std::string m_username;
 	bool m_isreg = false;
+	std::vector<uint8_t> m_buffer = {};
 };
 

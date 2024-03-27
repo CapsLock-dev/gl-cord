@@ -55,6 +55,5 @@ void MyFrame::OnSendClick(wxCommandEvent& event) {
 	std::string text = m_msgbox->GetValue().ToStdString();
 	ChatMessage msg(text);
 	m_net.write(msg.get_data());
-	std::cout << "Msg: " << msg.get_message() << "\n";
 	m_msgbox->SetValue("");
 }

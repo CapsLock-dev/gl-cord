@@ -14,8 +14,9 @@ Network::~Network() {
 void Network::connect(const asio::ip::tcp::resolver::results_type& endpoints) {
 	asio::async_connect(m_socket, endpoints, [this](std::error_code ec, asio::ip::tcp::endpoint) {
 		if (!ec) {
-			this->do_read_header();
 			if (!m_isreg) do_reg();
+			std::cout << "Connected to the server\n";
+			this->do_read_header();
 		}
 	});
 }
@@ -33,14 +34,13 @@ void Network::write(std::vector<uint8_t> data) {
 
 void Network::close()
 {
-	asio::post(m_ctx, [this]() { m_socket.close(); });
-	m_ctx_thrd.join();
+	asio::post(m_ctx, [this]() { m_socket.close(); std::cout << "Closed connection\n"; });
 }
 
 void Network::do_write() {
 	auto lambda = [this](std::error_code ec, std::size_t /*length*/) {
 		if (ec) {
-			m_socket.close();
+			close();
 		} else {
 			m_msgq.pop_front();
 			if (!m_msgq.empty())
@@ -51,33 +51,44 @@ void Network::do_write() {
 }
 
 void Network::do_read_header() {
-	std::vector<uint8_t> buffer;
-	msg_header header;
-	auto lambda =  [&,this](std::error_code ec, std::size_t /*length*/) {
+	m_buffer.clear();
+	m_buffer.resize(msg_header_size);
+	auto lambda =  [this](std::error_code ec, std::size_t /*length*/) {
 		if (!ec) {
-			header.bytes_to_header(buffer);
-			do_read_body(header);
+			if (m_buffer.size() > 0) {
+				msg_header header;
+				header.bytes_to_header(m_buffer);
+				std::cout << "Got message, type: " << (int)header.type << " size: " << header.body_size << "\n";
+				do_read_body(header);
+			} else {
+				std::cout << "Empty msg header\n";
+				do_read_header();
+			}
 		} else {
-			m_socket.close();
+			std::cout << "Error: " << ec << "\n";
+			close();
 		}
 	};
-	buffer.resize(msg_header_size);
-	asio::async_read(m_socket, asio::buffer(&buffer[0], msg_header_size), lambda);
+	asio::async_read(m_socket, asio::buffer(m_buffer.data(), msg_header_size), lambda);
 }
 
 void Network::do_read_body(msg_header header) {
-	std::vector<uint8_t> buffer;
-	buffer.resize(header.body_size);
-	auto lambda = [&,this](std::error_code ec, std::size_t /*length*/) {
+	m_buffer.clear();
+	m_buffer.resize(header.body_size);
+	auto lambda = [header, this](std::error_code ec, std::size_t /*length*/) {
 		if (!ec) {
-			ChatMessage msg(buffer);
-			std::cout << "Msg: " << msg.get_message() << "\n";
+			if (m_buffer.size() > 0) {
+				ChatMessage msg(header, m_buffer);
+				std::cout << "Msg: " << msg.get_message() << "\n";
+			} else {
+				std::cout << "Empty message\n";
+			}
 			do_read_header();
 		} else {
-			m_socket.close();
+			close();
 		}
 	};
-	asio::async_read(m_socket, asio::buffer(&buffer[0], header.body_size), lambda);
+	asio::async_read(m_socket, asio::buffer(m_buffer.data(), header.body_size), lambda);
 }
 
 void Network::do_reg() {
